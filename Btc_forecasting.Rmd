@@ -1,0 +1,185 @@
+---
+title: "Untitled"
+author: "Clara"
+date: '2022-07-08'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+library(ggplot2)
+library(forecast)
+library(fpp3)
+library(knitr)
+library(quantmod)
+library(timeSeries)
+library(tseries)
+library(xts)
+library(zoo)
+library(gridExtra)
+suppressMessages(library(dplyr))
+library(tidyverse)
+library(tibbletime)
+library(ggfortify)
+library(TSstudio)
+```
+
+```{r}
+getSymbols('BTC-USD', from="2018-01-01") 
+btc=`BTC-USD`$`BTC-USD.Close`
+#Data from yahoo is already processed to xts object
+```
+
+
+```{r}
+colnames(btc) <- c('close_price')
+```
+
+```{r}
+plot(btc)
+```
+```{r}
+#convert everything to everything
+library(tsbox)
+btc.tsibble <- ts_tsibble(btc)
+```
+
+```{r}
+#Decomposition of data
+fill_gaps(btc.tsibble)
+dcmp <- btc.tsibble %>% model(stl = STL(value))
+
+components(dcmp) %>% autoplot()
+
+```
+
+The seasonal component is not really usefull for daily timeseries. The remainder looks pretty the same as the BTC price
+
+```{r}
+components(dcmp) %>%
+  as_tsibble() %>%
+  autoplot(value, colour="gray") +
+  geom_line(aes(y=trend), colour = "#D55E00") +
+  labs(
+    y = "BTC price",
+    title = "BTC price with trendline"
+  )
+```
+Moving average is a good tool for price discovery, for which we will calculate long-term and short-term moving average. The long-term moving average is MA99 while the short-term moving average is MA25.
+
+```{r}
+library(slider)
+btc$MA25= slide_dbl(btc$close_price, mean, .before = 12, .after = 12, .complete = TRUE)
+btc$MA99= slide_dbl(btc$close_price, mean, .before = 49, .after = 49, .complete = TRUE)
+```
+
+```{r}
+btc %>%
+  autoplot('close_price') +
+  geom_line(aes(y = `MA25`), colour = "green") +
+  geom_line(aes(y = `MA99`), colour = "blue") +
+  labs(y = "BTC price in USD",
+       title = "BTC price + moving average") +
+  guides(colour = guide_legend(title = "series"))
+```
+Autocorrelation 
+```{r}
+btc.tsibble %>% ACF(value) %>% 
+  autoplot() + labs(subtitle = "BTC closing  price")
+btc.tsibble %>% ACF(difference(value)) %>% 
+  autoplot() + labs(subtitle = "Changes in BTC closing price")
+
+```
+```{r}
+btc.tsibble %>%  mutate(diff_close = difference(value)) %>% features(diff_close, ljung_box, lag = 10)
+```
+Since the p-value is significant at lag of 10, we rejects the null hypothesis that the time series isn’t autocorrelated.
+
+```{r}
+btc.tsibble %>%  mutate(diff_close = difference(value)) %>% features(diff_close, ljung_box, lag = 1)
+```
+
+```{r}
+fit <- btc.tsibble %>% model(ARIMA(value))
+report(fit)
+```
+
+```{r}
+fit %>% forecast(h=100) %>%
+  autoplot(btc.tsibble) +
+  labs(y = "BTC price in USD", title = "BTC forecasting")
+
+```
+
+
+
+```{r}
+training <- btc[1:1500]
+testing <- btc[1501:1650]
+```
+
+```{r}
+test.tsibble = ts_tsibble(testing)
+train.tsibble = ts_tsibble(training)
+```
+
+```{r}
+fit.train <- train.tsibble %>% model(ARIMA(value))
+report(fit.train)
+```
+```{r}
+fit.train %>% forecast(h=100) %>%
+  autoplot(train.tsibble) +
+  labs(y = "BTC price in USD", title = "BTC forecasting")
+line(test.tsibble$value)
+```
+
+
+```{r}
+#Decomposition of apple stock price
+apple.de.add = decompose(apple, type = "additive")
+apple.de.mul = decompose(apple, type =  "multiplicative")
+plot(apple.de.add)
+plot(apple.de.mul)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
